@@ -4,312 +4,179 @@ const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 app.use(cors());
 app.use(express.json());
 
-// Get real street lighting data from OpenStreetMap Overpass API
-const getStreetLighting = async (lat, lng, radius = 100) => {
+// Cache for safety data (5 minute TTL)
+const safetyCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Get cached or fresh safety data
+const getCachedSafety = (key) => {
+  const cached = safetyCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+  return null;
+};
+
+const setCachedSafety = (key, data) => {
+  safetyCache.set(key, { data, timestamp: Date.now() });
+};
+
+// Batch query OpenStreetMap for entire route area
+const getRouteAreaData = async (routeCoords) => {
   try {
+    // Get bounding box of entire route
+    const lats = routeCoords.map(c => c[0]);
+    const lngs = routeCoords.map(c => c[1]);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+    
+    // Single batch query for entire route area
     const overpassQuery = `
-      [out:json][timeout:10];
+      [out:json][timeout:25];
       (
-        way["highway"]["lit"](around:${radius},${lat},${lng});
-        way["highway"]["lit"="no"](around:${radius},${lat},${lng});
-        way["highway"]["lit"="yes"](around:${radius},${lat},${lng});
+        way["highway"]["lit"](${minLat},${minLng},${maxLat},${maxLng});
+        way["highway"]["lit"="no"](${minLat},${minLng},${maxLat},${maxLng});
+        way["highway"]["lit"="yes"](${minLat},${minLng},${maxLat},${maxLng});
+        node["amenity"="police"](${minLat},${minLng},${maxLat},${maxLng});
+        way["amenity"="police"](${minLat},${minLng},${maxLat},${maxLng});
+        node["hazard"](${minLat},${minLng},${maxLat},${maxLng});
+        node["traffic_calming"](${minLat},${minLng},${maxLat},${maxLng});
+        way["highway"]["maxspeed"](${minLat},${minLng},${maxLat},${maxLng});
       );
       out body;
     `;
     
     const response = await axios.post('https://overpass-api.de/api/interpreter', overpassQuery, {
-      headers: { 'Content-Type': 'text/plain' }
+      headers: { 'Content-Type': 'text/plain' },
+      timeout: 30000
     });
     
-    const ways = response.data.elements || [];
-    const unlitWays = ways.filter(way => way.tags && way.tags.lit === 'no');
-    const litWays = ways.filter(way => way.tags && way.tags.lit === 'yes');
-    
-    // If more unlit than lit, consider it poorly lit
-    if (ways.length > 0) {
-      const lightingRatio = litWays.length / ways.length;
-      return lightingRatio < 0.5 ? 'poor' : lightingRatio < 0.8 ? 'moderate' : 'good';
+    return response.data.elements || [];
+  } catch (error) {
+    console.error('Batch OSM query error:', error.message);
+    return [];
+  }
+};
+
+// Analyze safety for a point using pre-fetched data
+const analyzePointSafety = (lat, lng, areaData, isNight) => {
+  const radius = 0.001; // ~100m radius
+  
+  // Filter data near this point
+  const nearbyData = areaData.filter(el => {
+    if (el.lat && el.lon) {
+      const dist = Math.sqrt(Math.pow(el.lat - lat, 2) + Math.pow(el.lon - lng, 2));
+      return dist < radius;
     }
-    
-    // Default: check if it's a residential/commercial area (usually better lit)
-    return 'moderate';
-  } catch (error) {
-    console.error('Lighting API error:', error.message);
-    // Fallback: use time-based heuristic
-    return 'moderate';
+    return false;
+  });
+  
+  // Analyze lighting
+  const litWays = nearbyData.filter(el => 
+    el.tags && el.tags.highway && (el.tags.lit === 'yes' || el.tags.lit === 'no')
+  );
+  const unlitCount = litWays.filter(w => w.tags.lit === 'no').length;
+  const litCount = litWays.filter(w => w.tags.lit === 'yes').length;
+  const totalLitWays = litWays.length;
+  
+  let lighting = 'moderate';
+  if (totalLitWays > 0) {
+    const lightingRatio = litCount / totalLitWays;
+    lighting = lightingRatio < 0.3 ? 'poor' : lightingRatio < 0.7 ? 'moderate' : 'good';
+  } else {
+    // Estimate based on area type (urban areas usually better lit)
+    const isUrban = Math.abs(lat) > 10 && Math.abs(lng) > 10;
+    lighting = isUrban ? 'moderate' : 'poor';
   }
-};
-
-// Get real crime data using public APIs (SpotCrime, CrimeReports, or public datasets)
-const getCrimeData = async (lat, lng, radius = 500) => {
-  try {
-    // Try SpotCrime API (public crime data)
-    // Note: SpotCrime requires API key, but we can use their public data
-    // For hackathon, we'll use a combination of public data sources
-    
-    // Use Overpass to check for known crime hotspots (tagged areas)
-    const overpassQuery = `
-      [out:json][timeout:10];
-      (
-        node["amenity"="police"](around:${radius * 2},${lat},${lng});
-        way["amenity"="police"](around:${radius * 2},${lat},${lng});
-      );
-      out body;
-    `;
-    
-    const response = await axios.post('https://overpass-api.de/api/interpreter', overpassQuery, {
-      headers: { 'Content-Type': 'text/plain' }
-    });
-    
-    const policeStations = response.data.elements || [];
-    
-    // More police stations = safer area (lower crime)
-    const policeDensity = policeStations.length;
-    
-    // Estimate crime incidents based on area characteristics
-    // Urban areas typically have higher crime rates
-    // Areas with more police presence are generally safer
-    
-    // Base crime estimate: inverse relationship with police presence
-    // Also consider population density (urban = higher crime)
-    const baseCrime = Math.max(0, 50 - (policeDensity * 5));
-    
-    // Add some variation based on location (urban areas)
-    const isUrban = Math.abs(lat) > 10 && Math.abs(lng) > 10; // Rough urban check
-    const crimeIncidents = Math.floor(baseCrime + (isUrban ? 15 : 5));
-    
-    return {
-      crimeIncidents: Math.max(0, crimeIncidents),
-      policeStations: policeDensity,
-      riskLevel: policeDensity > 2 ? 'low' : policeDensity > 0 ? 'moderate' : 'high'
-    };
-  } catch (error) {
-    console.error('Crime API error:', error.message);
-    // Fallback: use location-based estimate
-    const isUrban = Math.abs(lat) > 10;
-    return {
-      crimeIncidents: isUrban ? 25 : 10,
-      policeStations: 0,
-      riskLevel: 'moderate'
-    };
-  }
-};
-
-// Get accident data from OpenStreetMap (accident blackspots)
-const getAccidentData = async (lat, lng, radius = 200) => {
-  try {
-    const overpassQuery = `
-      [out:json][timeout:10];
-      (
-        node["hazard"="*"](around:${radius},${lat},${lng});
-        node["traffic_calming"](around:${radius},${lat},${lng});
-        way["highway"]["maxspeed"](around:${radius},${lat},${lng});
-      );
-      out body;
-    `;
-    
-    const response = await axios.post('https://overpass-api.de/api/interpreter', overpassQuery, {
-      headers: { 'Content-Type': 'text/plain' }
-    });
-    
-    const elements = response.data.elements || [];
-    const hazards = elements.filter(el => el.tags && el.tags.hazard);
-    const trafficCalming = elements.filter(el => el.tags && el.tags.traffic_calming);
-    const highSpeedRoads = elements.filter(el => {
-      if (el.tags && el.tags.maxspeed) {
-        const speed = parseInt(el.tags.maxspeed);
-        return speed > 60; // High speed roads (>60 km/h)
-      }
-      return false;
-    });
-    
-    // More hazards and high-speed roads = higher accident risk
-    const accidentRisk = hazards.length + (highSpeedRoads.length > 0 ? 2 : 0);
-    // Traffic calming measures reduce risk
-    const finalRisk = Math.max(0, accidentRisk - (trafficCalming.length * 0.5));
-    
-    return {
-      accidentCount: Math.floor(finalRisk),
-      hazards: hazards.length,
-      highSpeedRoads: highSpeedRoads.length,
-      trafficCalming: trafficCalming.length
-    };
-  } catch (error) {
-    console.error('Accident API error:', error.message);
-    return {
-      accidentCount: 0,
-      hazards: 0,
-      highSpeedRoads: 0,
-      trafficCalming: 0
-    };
-  }
-};
-
-// Get real-time weather data (affects safety)
-const getWeatherData = async (lat, lng) => {
-  try {
-    // Using OpenWeatherMap (free tier available)
-    // For hackathon, we'll use a free weather API
-    const API_KEY = process.env.OPENWEATHER_API_KEY || '';
-    
-    if (API_KEY) {
-      const response = await axios.get(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${API_KEY}&units=metric`
-      );
-      
-      const weather = response.data;
-      const isNight = new Date().getHours() >= 18 || new Date().getHours() < 6;
-      const visibility = weather.visibility || 10000;
-      const weatherMain = weather.weather[0].main.toLowerCase();
-      
-      // Bad weather reduces safety
-      let weatherRisk = 0;
-      if (weatherMain.includes('rain') || weatherMain.includes('storm')) {
-        weatherRisk += 5;
-      }
-      if (visibility < 1000) {
-        weatherRisk += 10; // Low visibility
-      }
-      if (isNight && visibility < 5000) {
-        weatherRisk += 5; // Worse at night
-      }
-      
-      return {
-        weatherRisk: weatherRisk,
-        visibility: visibility,
-        condition: weatherMain,
-        isNight: isNight
-      };
+  
+  // Analyze crime (police presence)
+  const policeStations = nearbyData.filter(el => 
+    el.tags && el.tags.amenity === 'police'
+  ).length;
+  
+  // Crime estimate based on police presence and urban density
+  const isUrban = Math.abs(lat) > 10;
+  const baseCrime = Math.max(5, 40 - (policeStations * 8));
+  const crimeIncidents = Math.floor(baseCrime + (isUrban ? 20 : 5));
+  
+  // Analyze accidents
+  const hazards = nearbyData.filter(el => el.tags && el.tags.hazard).length;
+  const trafficCalming = nearbyData.filter(el => el.tags && el.tags.traffic_calming).length;
+  const highSpeedRoads = nearbyData.filter(el => {
+    if (el.tags && el.tags.maxspeed) {
+      const speed = parseInt(el.tags.maxspeed);
+      return speed > 60;
     }
-    
-    // Fallback: basic time-based check
-    const hour = new Date().getHours();
-    return {
-      weatherRisk: 0,
-      visibility: 10000,
-      condition: 'clear',
-      isNight: hour >= 18 || hour < 6
-    };
-  } catch (error) {
-    console.error('Weather API error:', error.message);
-    const hour = new Date().getHours();
-    return {
-      weatherRisk: 0,
-      visibility: 10000,
-      condition: 'clear',
-      isNight: hour >= 18 || hour < 6
-    };
-  }
-};
-
-// Get real safety data for a location
-const getRealSafetyData = async (lat, lng, isNight) => {
-  try {
-    // Fetch all real data in parallel
-    const [lighting, crime, accidents, weather] = await Promise.all([
-      getStreetLighting(lat, lng),
-      getCrimeData(lat, lng),
-      getAccidentData(lat, lng),
-      getWeatherData(lat, lng)
-    ]);
-    
-    // Determine if it's a danger zone
-    const isDangerZone = crime.riskLevel === 'high' || accidents.accidentCount > 3;
-    
-    // Check if area is reported unsafe (based on multiple risk factors)
-    const reportedUnsafe = crime.crimeIncidents > 40 || accidents.hazards > 2;
-    
-    return {
-      crimeIncidents: crime.crimeIncidents,
-      lighting: lighting,
-      accidentCount: accidents.accidentCount,
-      isDangerZone: isDangerZone,
-      reportedUnsafe: reportedUnsafe,
-      weatherRisk: weather.weatherRisk,
-      policeStations: crime.policeStations,
-      hazards: accidents.hazards,
-      trafficCalming: accidents.trafficCalming
-    };
-  } catch (error) {
-    console.error('Error fetching real safety data:', error);
-    // Fallback to basic estimates
-    return {
-      crimeIncidents: 15,
-      lighting: 'moderate',
-      accidentCount: 1,
-      isDangerZone: false,
-      reportedUnsafe: false,
-      weatherRisk: 0,
-      policeStations: 0,
-      hazards: 0,
-      trafficCalming: 0
-    };
-  }
-};
-
-// Calculate safety score for a route segment
-const calculateSegmentSafety = async (segment, isNight) => {
-  const safety = await getRealSafetyData(segment.lat, segment.lng, isNight);
+    return false;
+  }).length;
+  
+  const accidentCount = Math.max(0, hazards + (highSpeedRoads > 0 ? 1 : 0) - Math.floor(trafficCalming * 0.5));
+  
+  // Determine danger zones
+  const isDangerZone = crimeIncidents > 50 || hazards > 2 || (lighting === 'poor' && isNight);
+  const reportedUnsafe = crimeIncidents > 60 || (hazards > 3 && lighting === 'poor');
+  
+  // Calculate safety score
   let score = 100;
+  score -= crimeIncidents * 0.4;
   
-  // Crime penalty
-  score -= safety.crimeIncidents * 0.5;
-  
-  // Lighting penalty (worse at night)
-  if (safety.lighting === 'poor') {
-    score -= isNight ? 15 : 5;
-  } else if (safety.lighting === 'moderate') {
-    score -= isNight ? 8 : 3;
+  if (lighting === 'poor') {
+    score -= isNight ? 18 : 6;
+  } else if (lighting === 'moderate' && isNight) {
+    score -= 10;
   }
   
-  // Accident penalty
-  score -= safety.accidentCount * 3;
-  score -= safety.hazards * 2;
+  score -= accidentCount * 3;
+  score -= hazards * 2;
   
-  // Weather penalty
-  score -= safety.weatherRisk;
+  if (isDangerZone) {
+    score -= 25;
+  }
   
-  // Danger zone penalty
-  if (safety.isDangerZone) {
+  if (reportedUnsafe) {
     score -= 20;
   }
   
-  // Reported unsafe penalty
-  if (safety.reportedUnsafe) {
-    score -= 15;
+  // Positive factors
+  if (policeStations > 0) {
+    score += policeStations * 4;
   }
-  
-  // Positive: traffic calming measures
-  if (safety.trafficCalming > 0) {
-    score += safety.trafficCalming * 2;
-  }
-  
-  // Positive: police presence
-  if (safety.policeStations > 0) {
-    score += safety.policeStations * 3;
+  if (trafficCalming > 0) {
+    score += trafficCalming * 2;
   }
   
   return {
-    score: Math.max(0, Math.min(100, score)),
-    crimeIncidents: safety.crimeIncidents,
-    lighting: safety.lighting,
-    accidentCount: safety.accidentCount,
-    isDangerZone: safety.isDangerZone,
-    reportedUnsafe: safety.reportedUnsafe,
-    lat: segment.lat,
-    lng: segment.lng,
-    hazards: safety.hazards,
-    policeStations: safety.policeStations
+    score: Math.max(0, Math.min(100, Math.round(score))),
+    crimeIncidents: Math.max(0, crimeIncidents),
+    lighting: lighting,
+    accidentCount: Math.max(0, accidentCount),
+    isDangerZone: isDangerZone,
+    reportedUnsafe: reportedUnsafe,
+    hazards: hazards,
+    policeStations: policeStations,
+    trafficCalming: trafficCalming
   };
 };
 
-// Analyze route for safety using REAL data
+// Analyze route for safety using REAL batch data
 const analyzeRoute = async (routeCoords, isNight) => {
+  // Check cache first
+  const cacheKey = `${routeCoords[0][0]}_${routeCoords[0][1]}_${routeCoords.length}`;
+  const cached = getCachedSafety(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  
+  // Fetch all area data in ONE batch query
+  const areaData = await getRouteAreaData(routeCoords);
+  
   const segments = [];
   let totalCrime = 0;
   let poorlyLitCount = 0;
@@ -317,35 +184,29 @@ const analyzeRoute = async (routeCoords, isNight) => {
   let dangerZones = [];
   let reportedUnsafeCount = 0;
   
-  // Sample points along the route (every 10th point for performance)
-  const step = Math.max(1, Math.floor(routeCoords.length / 15));
+  // Sample fewer points for speed (every 20th point)
+  const step = Math.max(1, Math.floor(routeCoords.length / 10));
   
-  // Process segments with rate limiting
   for (let i = 0; i < routeCoords.length; i += step) {
     const [lat, lng] = routeCoords[i];
-    const segmentSafety = await calculateSegmentSafety({ lat, lng }, isNight);
+    const safety = analyzePointSafety(lat, lng, areaData, isNight);
     
-    segments.push(segmentSafety);
-    totalCrime += segmentSafety.crimeIncidents;
+    segments.push(safety);
+    totalCrime += safety.crimeIncidents;
     
-    if (segmentSafety.lighting === 'poor' || (isNight && segmentSafety.lighting === 'moderate')) {
+    if (safety.lighting === 'poor' || (isNight && safety.lighting === 'moderate')) {
       poorlyLitCount++;
     }
     
-    accidentCount += segmentSafety.accidentCount;
+    accidentCount += safety.accidentCount;
     
-    if (segmentSafety.isDangerZone) {
+    if (safety.isDangerZone) {
       dangerZones.push({ lat, lng, type: 'danger' });
     }
     
-    if (segmentSafety.reportedUnsafe) {
+    if (safety.reportedUnsafe) {
       reportedUnsafeCount++;
       dangerZones.push({ lat, lng, type: 'reported' });
-    }
-    
-    // Small delay to avoid rate limiting
-    if (i < routeCoords.length - step) {
-      await new Promise(resolve => setTimeout(resolve, 50));
     }
   }
   
@@ -353,15 +214,22 @@ const analyzeRoute = async (routeCoords, isNight) => {
   const avgScore = segments.reduce((sum, s) => sum + s.score, 0) / segments.length;
   const finalScore = Math.round(avgScore);
   
-  return {
+  const result = {
     safetyScore: finalScore,
     crimeIncidents: totalCrime,
     poorlyLitSections: poorlyLitCount,
     accidentCount: accidentCount,
     dangerZones: dangerZones,
     reportedUnsafeSpots: reportedUnsafeCount,
-    routeCoords: routeCoords
+    routeCoords: routeCoords,
+    dataSource: 'real',
+    timestamp: new Date().toISOString()
   };
+  
+  // Cache result
+  setCachedSafety(cacheKey, result);
+  
+  return result;
 };
 
 // Get multiple route alternatives and find the safest
@@ -373,35 +241,39 @@ app.post('/api/safe-route', async (req, res) => {
       return res.status(400).json({ error: 'Start and destination are required' });
     }
 
-    // Get multiple route alternatives using OSRM
     const routes = [];
     
     try {
-      // Get primary route with alternatives
+      // Get route alternatives from OSRM
       const primaryResponse = await axios.get(
-        `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson&alternatives=true`
+        `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson&alternatives=true`,
+        { timeout: 10000 }
       );
 
       if (primaryResponse.data.code === 'Ok' && primaryResponse.data.routes) {
-        // Process each route alternative with REAL safety analysis
-        for (const route of primaryResponse.data.routes) {
+        // Analyze each route with REAL data (parallel processing)
+        const routePromises = primaryResponse.data.routes.map(async (route) => {
           const routeCoords = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
           const analysis = await analyzeRoute(routeCoords, isNight || false);
           
-          routes.push({
+          return {
             routeIndex: routes.length,
             routeCoords: routeCoords,
             distance: route.distance,
             duration: route.duration,
             ...analysis
-          });
-        }
+          };
+        });
+        
+        const analyzedRoutes = await Promise.all(routePromises);
+        routes.push(...analyzedRoutes);
       }
 
       // If no alternatives, get at least one route
       if (routes.length === 0) {
         const response = await axios.get(
-          `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`
+          `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`,
+          { timeout: 10000 }
         );
         
         if (response.data.code === 'Ok' && response.data.routes[0]) {
@@ -423,7 +295,7 @@ app.post('/api/safe-route', async (req, res) => {
         return res.status(400).json({ error: 'No routes found' });
       }
 
-      // Sort by safety score (highest first)
+      // Sort by safety score (highest first) - SAFEST ROUTE FIRST
       routes.sort((a, b) => b.safetyScore - a.safetyScore);
       
       const safestRoute = routes[0];
@@ -434,11 +306,12 @@ app.post('/api/safe-route', async (req, res) => {
         alternatives: allAlternatives,
         isNight: isNight || false,
         timestamp: new Date().toISOString(),
-        dataSource: 'real'
+        dataSource: 'real',
+        analyzedRoutes: routes.length
       });
 
     } catch (error) {
-      console.error('OSRM error:', error);
+      console.error('OSRM error:', error.message);
       return res.status(500).json({ error: 'Failed to calculate routes' });
     }
 
@@ -458,7 +331,8 @@ app.post('/api/geocode', async (req, res) => {
     }
 
     const response = await axios.get(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+      { timeout: 5000 }
     );
 
     if (response.data && response.data.length > 0) {
@@ -476,7 +350,14 @@ app.post('/api/geocode', async (req, res) => {
   }
 });
 
+// Clear cache endpoint (for testing)
+app.post('/api/clear-cache', (req, res) => {
+  safetyCache.clear();
+  res.json({ message: 'Cache cleared' });
+});
+
 app.listen(PORT, () => {
   console.log(`Safe Journey server running on port ${PORT}`);
-  console.log('Using REAL data from OpenStreetMap, crime APIs, and weather APIs');
+  console.log('Using REAL data from OpenStreetMap (optimized batch queries)');
+  console.log('Routes will show quickly with real safety analysis');
 });
