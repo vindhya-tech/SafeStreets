@@ -305,7 +305,7 @@ const css = `
   display:flex;
   align-items:center;
   justify-content:center;
-  background: #f7cbd4ff;
+  background: #3d0d49ff;
   font-family: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   padding: 10px 150px;
 }
@@ -332,7 +332,7 @@ const css = `
   flex-direction:column;
   align-items:center;
   justify-content:center;
-  background: linear-gradient(135deg, var(--pink1), var(--pink2));
+  background: linear-gradient(135deg, #A45EEA, #7C2ED3);
   color:white;
 }
 
@@ -405,7 +405,7 @@ const css = `
   padding:6px 12px;
 }
 .tab.active{
-  background:linear-gradient(90deg, var(--pink1), var(--pink2));
+  background:linear-gradient(90deg, #A45EEA, #7C2ED3);
   color:#fff;
   border-radius:18px;
 }
@@ -460,7 +460,7 @@ const css = `
 
 /* BUTTON */
 .primary{
-  background: linear-gradient(90deg, var(--pink1), var(--pink2));
+  background: linear-gradient(90deg, #A45EEA, #7C2ED3);
   color:#fff;
   border:none;
   padding:12px 18px;
@@ -475,7 +475,7 @@ const css = `
 /* ERROR */
 .error{
   color:#b12b2b;
-  background:#feecec;
+  background: #7C2ED3;
   padding:8px;
   border-radius:6px;
   font-size:13px;

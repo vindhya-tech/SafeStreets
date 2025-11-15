@@ -141,11 +141,10 @@ const css = `
   display:flex;
   align-items:center;
   justify-content:center;
-  background:#f7cbd4ff;
+  background:#7828BC; /* UPDATED COLOR */
   padding:20px;
   font-family:"Poppins",sans-serif;
 }
-
 .card{
   display:flex;
   width:900px;
@@ -158,7 +157,7 @@ const css = `
 
 .left{
   width:40%;
-  background:linear-gradient(135deg,#ff7eb3,#ff758c);
+  background:linear-gradient(135deg,#A45EEA,#7C2ED3);
   display:flex;
   flex-direction:column;
   justify-content:center;
@@ -243,7 +242,7 @@ const css = `
 }
 
 .primary{
-  background:linear-gradient(135deg,#ff7eb3,#ff758c);
+  background:linear-gradient(135deg,#A45EEA, #7C2ED3);
   color:white;
   border:none;
   padding:12px;
@@ -255,6 +254,6 @@ const css = `
 .goSignup{
   text-align:center;
   cursor:pointer;
-  color:#ff758c;
+  color:black;
 }
 `;
