@@ -3,6 +3,10 @@ import Signup from "../pages/signup";
 import Login from "../pages/login";
 import Dashboard from "../pages/Dashboard";
 import ProtectedRoute from "../components/ProtectedRoute";
+import EmergencyPage from "../pages/EmergencyPage.jsx";
+import SOSPage from "../pages/SOSPage.jsx";
+
+
 
 import SafeRouteMap from "../SafeRouteMap.jsx"; // ✅ Correct import
 // import EmergencyPage from "../pages/EmergencyPage"; // ❌ Comment until created
@@ -25,7 +29,16 @@ export default function AppRouter() {
 
       <Route path="/map" element={<ProtectedRoute><SafeRouteMap /></ProtectedRoute>} />
 
-      {/* <Route path="/emergency" element={<ProtectedRoute><EmergencyPage /></ProtectedRoute>} /> */}
+      <Route path="/emergency" element={<ProtectedRoute><EmergencyPage /></ProtectedRoute>} /> 
+      <Route
+  path="/sos"
+  element={
+    <ProtectedRoute>
+      <SOSPage />
+    </ProtectedRoute>
+  }
+/>
+
 
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
