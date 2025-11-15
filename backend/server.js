@@ -1,3 +1,10 @@
+const mongoose = require("mongoose");
+
+mongoose
+  .connect("mongodb://127.0.0.1:27017/safejourney")
+  .then(() => console.log("MongoDB Connected"))
+  .catch(err => console.error(err));
+
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -8,6 +15,10 @@ const PORT = process.env.PORT || 5001;
 
 app.use(cors());
 app.use(express.json());
+// AUTH ROUTES
+app.use("/api/auth", require("./routes/auth"));
+
+
 
 // Cache for safety data (5 minute TTL)
 const safetyCache = new Map();
