@@ -8,11 +8,9 @@ export default function SOSPage() {
   const [loadingLocation, setLoadingLocation] = useState(true);
 
   useEffect(() => {
-    // Load saved emergency contacts (array of numbers)
     const saved = JSON.parse(localStorage.getItem("emergencyContacts")) || [];
     setContacts(saved);
 
-    // Get current location
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -22,75 +20,81 @@ export default function SOSPage() {
           });
           setLoadingLocation(false);
         },
-        (err) => {
-          console.error(err);
-          alert("Unable to access your location. Please enable GPS / Location.");
+        () => {
+          alert("Unable to access location. Enable GPS.");
           setLoadingLocation(false);
         }
       );
-    } else {
-      alert("Geolocation is not supported by this browser.");
-      setLoadingLocation(false);
     }
   }, []);
 
   const sendSOS = () => {
-    if (contacts.length === 0) {
-      alert("Please add at least one emergency contact first!");
-      return;
-    }
+    if (contacts.length === 0)
+      return alert("Please add at least one emergency contact");
 
-    if (!location.lat || !location.lng) {
-      alert("Still fetching your location. Please wait a few seconds and try again.");
-      return;
-    }
+    if (!location.lat) return alert("Fetching location... wait!");
 
     const message = encodeURIComponent(
-      `🚨 I am in danger!\n` +
-      `📍 My live location: https://www.google.com/maps?q=${location.lat},${location.lng}\n` +
-      `Please help me immediately!`
+      `🚨 I am in danger!\n📍 Location: https://www.google.com/maps?q=${location.lat},${location.lng}`
     );
 
-    // Open WhatsApp chat for EACH saved contact
     contacts.forEach((num) => {
-      // assuming Indian numbers, add 91 – change as needed
-      const trimmed = String(num).replace(/\D/g, ""); // remove spaces, dashes
+      const trimmed = String(num).replace(/\D/g, "");
       window.open(`https://wa.me/91${trimmed}?text=${message}`, "_blank");
     });
 
-    alert("SOS triggered! WhatsApp chats opened for all emergency contacts 🚨");
+    alert("SOS Sent 🚨");
   };
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>🚨 SOS Emergency Alert</h2>
+      {/* 🔹 Navbar with Back + Title + Logout */}
+      <div style={styles.navbar}>
+        <button style={styles.backArrow} onClick={() => navigate(-1)}>
+          ←
+        </button>
 
-      <p style={styles.desc}>
-        One tap will send your live location to all saved emergency contacts via WhatsApp.
-      </p>
+        <h3 style={styles.navTitle}>SafeJourney</h3>
 
-      {loadingLocation ? (
-        <p style={styles.infoText}>Fetching your current location… ⏳</p>
-      ) : (
-        <p style={styles.infoText}>
-          Location ready ✅<br />
-          <small>
-            Lat: {location.lat?.toFixed(4)} | Lng: {location.lng?.toFixed(4)}
-          </small>
+        <button
+          style={styles.logoutBtn}
+          onClick={() => {
+            localStorage.removeItem("authUser");
+            navigate("/login");
+          }}
+        >
+          Logout
+        </button>
+      </div>
+
+      {/* Card */}
+      <div style={styles.card}>
+        <h2 style={styles.title}>🚨 SOS Emergency Alert</h2>
+        <p style={styles.desc}>
+          Tap and send your live location to your emergency contacts ⚠
         </p>
-      )}
 
-      <p style={styles.infoText}>
-        Saved emergency contacts: {contacts.length}/3
-      </p>
+        {loadingLocation ? (
+          <p style={styles.infoText}>Fetching location… ⏳</p>
+        ) : (
+          <p style={styles.infoText}>
+            Location Ready ✅ <br />
+            <small>
+              Lat: {location.lat?.toFixed(4)} | Lng: {location.lng?.toFixed(4)}
+            </small>
+          </p>
+        )}
 
-      <button style={styles.sosBtn} onClick={sendSOS}>
-        📡 SEND SOS ALERT
-      </button>
+        <p style={styles.infoText}>Saved Contacts: {contacts.length}/3</p>
 
-      <button style={styles.backBtn} onClick={() => navigate("/dashboard")}>
-        Back to Dashboard
-      </button>
+        <button style={styles.sosBtn} onClick={sendSOS}>
+          📡 SEND SOS ALERT
+        </button>
+
+        <button style={styles.backBtn} onClick={() => navigate("/emergency")}>
+          Manage Contacts
+        </button>
+      </div>
     </div>
   );
 }
@@ -98,48 +102,96 @@ export default function SOSPage() {
 const styles = {
   container: {
     minHeight: "100vh",
-    background: "#fa9aa1",
-    padding: "40px",
-    textAlign: "center",
-    fontFamily: '"Poppins", sans-serif',
+    fontFamily: "'Poppins', sans-serif",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    paddingTop: "80px",
+
+    /* 💜 Animated Violet Gradient */
+    background: "linear-gradient(-45deg, #e9d3ff, #c79afe, #b181f0, #d6b6ff)",
+    backgroundSize: "400% 400%",
+    animation: "gradientMove 10s ease infinite",
   },
-  title: {
-    fontSize: "30px",
-    fontWeight: "700",
-    color: "#7D0808",
-    marginBottom: "10px",
+
+  navbar: {
+    position: "fixed",
+    top: 0,
+    width: "100%",
+    background: "#9A4DFF",
+    padding: "10px 20px",
+    color: "#fff",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    zIndex: 1000,
   },
-  desc: {
-    fontSize: "17px",
-    color: "#333",
-    marginBottom: "20px",
-  },
-  infoText: {
-    fontSize: "14px",
-    color: "#222",
-    marginBottom: "12px",
-  },
-  sosBtn: {
-    background: "#e63946",
-    color: "white",
+
+  backArrow: {
+    background: "transparent",
     border: "none",
-    padding: "16px 30px",
-    borderRadius: "40px",
-    fontSize: "20px",
-    fontWeight: "800",
+    color: "white",
+    fontSize: "28px",
     cursor: "pointer",
-    marginTop: "10px",
-    boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+    fontWeight: "900",
   },
-  backBtn: {
-    marginTop: "20px",
-    background: "#1d3557",
-    color: "white",
+
+  navTitle: {
+    fontSize: "20px",
+    fontWeight: "700",
+    margin: 0,
+    position: "absolute",
+    left: "50%",
+    transform: "translateX(-50%)",
+  },
+
+  logoutBtn: {
+    background: "#E63946",
+    color: "#fff",
+    padding: "8px 15px",
+    borderRadius: "25px",
     border: "none",
-    padding: "10px 22px",
+    cursor: "pointer",
+    fontWeight: "600",
+  },
+
+  card: {
+    width: "90%",
+    maxWidth: "420px",
+    background: "#fff",
+    padding: "30px",
+    borderRadius: "22px",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.25)",
+    textAlign: "center",
+  },
+
+  title: { fontSize: "26px", fontWeight: "700", color: "#4b0082" },
+  desc: { color: "#444", marginBottom: "20px" },
+  infoText: { marginBottom: "15px", fontSize: "15px", color: "#222" },
+
+  sosBtn: {
+    background: "#E63946",
+    color: "#fff",
+    border: "none",
+    padding: "15px 20px",
+    width: "100%",
+    borderRadius: "25px",
+    fontSize: "18px",
+    cursor: "pointer",
+    fontWeight: "700",
+    marginTop: "10px",
+  },
+
+  backBtn: {
+    background: "#1d3557",
+    marginTop: "15px",
+    color: "#fff",
+    border: "none",
+    width: "100%",
+    padding: "12px 22px",
     borderRadius: "25px",
     cursor: "pointer",
     fontWeight: "600",
-    fontSize: "15px",
+    fontSize: "16px",
   },
 };

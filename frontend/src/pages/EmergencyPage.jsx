@@ -26,7 +26,7 @@ export default function EmergencyPage() {
     const updatedContacts = [...contactList, contact];
     setContactList(updatedContacts);
     localStorage.setItem("emergencyContacts", JSON.stringify(updatedContacts));
-    setContact(""); // clear input
+    setContact("");
   };
 
   const handleDelete = (index) => {
@@ -37,42 +37,73 @@ export default function EmergencyPage() {
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Emergency Contact Setup</h2>
-      <p style={styles.desc}>
-        Add up to 3 trusted phone numbers 🚨
-      </p>
 
-      <input
-        type="tel"
-        placeholder="Enter phone number"
-        value={contact}
-        onChange={(e) => setContact(e.target.value)}
-        style={styles.input}
-      />
+      {/* 🔥 Navbar with Back & Logout */}
+      <div style={styles.navbar}>
+        {/* Back Button */}
+        <button 
+          onClick={() => navigate(-1)}
+          style={styles.backBtn}
+        >
+          ←
+        </button>
 
-      <div style={styles.actionBtns}>
+        <h3 style={styles.navTitle}>SafeJourney</h3>
+
+        <button
+          style={styles.logoutBtn}
+          onClick={() => {
+            localStorage.removeItem("authUser");
+            navigate("/login");
+          }}
+        >
+          Logout
+        </button>
+        
+      </div>
+
+      {/* Card Box */}
+      <div style={styles.card}>
+        <h2 style={styles.title}>Emergency Contact Setup</h2>
+        <p style={styles.desc}>Add up to 3 trusted contacts 🚨</p>
+
+        <input
+          type="tel"
+          placeholder="Enter phone number"
+          value={contact}
+          onChange={(e) => setContact(e.target.value)}
+          style={styles.input}
+        />
+
         <button onClick={handleSave} style={styles.saveBtn}>
           Save Contact
         </button>
-        <button onClick={() => navigate("/dashboard")} style={styles.backBtn}>
-          Back to Dashboard
+
+        <button
+          style={styles.mapBtn}
+          onClick={() => navigate("/map")}
+        >
+          🗺 Proceed to Maps
         </button>
+
+        {contactList.length > 0 && (
+          <div style={styles.listContainer}>
+            <h3 style={styles.savedTitle}>Saved Contacts</h3>
+
+            {contactList.map((num, index) => (
+              <div key={index} style={styles.contactCard}>
+                <span>{num}</span>
+                <button
+                  style={styles.deleteBtn}
+                  onClick={() => handleDelete(index)}
+                >
+                  ✖
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-
-      {contactList.length > 0 && (
-        <div style={styles.listContainer}>
-          <h3 style={styles.savedTitle}>Saved Contacts</h3>
-
-          {contactList.map((num, index) => (
-            <div key={index} style={styles.contactCard}>
-              <span>{num}</span>
-              <button style={styles.deleteBtn} onClick={() => handleDelete(index)}>
-                ✖
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -80,61 +111,132 @@ export default function EmergencyPage() {
 const styles = {
   container: {
     minHeight: "100vh",
-    background: "#f7cbd4ff",
-    padding: "40px",
-    textAlign: "center",
-    fontFamily: '"Poppins", sans-serif',
+    fontFamily: "'Poppins', sans-serif",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "flex-start",
+    paddingTop: "80px",
+    background: "linear-gradient(-45deg, #e9d3ff, #c79afe, #b181f0, #d6b6ff)",
+    backgroundSize: "400% 400%",
+    animation: "gradientMove 10s ease infinite",
   },
-  title: { fontSize: "28px", color: "#333" },
-  desc: { color: "#555", marginBottom: "20px" },
-  input: {
-    width: "90%",
-    maxWidth: "350px",
-    padding: "12px",
-    fontSize: "18px",
-    borderRadius: "10px",
-    border: "1px solid #aaa",
-    textAlign: "center",
-    marginBottom: "20px",
-  },
-  actionBtns: { display: "flex", gap: "10px", justifyContent: "center" },
-  saveBtn: {
-    background: "#1d3557",
+
+  navbar: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100%",
+    background: "#9A4DFF",
+    padding: "15px 20px",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
     color: "#fff",
-    border: "none",
-    padding: "10px 25px",
-    borderRadius: "25px",
-    cursor: "pointer",
+    zIndex: 1000
   },
+
   backBtn: {
-    background: "#e63946",
-    color: "#fff",
+    position: "absolute",
+    left: "15px",
+    background: "transparent",
     border: "none",
-    padding: "10px 25px",
-    borderRadius: "25px",
+    fontSize: "26px",
+    fontWeight: "900",
+    color: "#fff",
     cursor: "pointer",
   },
-  listContainer: {
-    marginTop: "25px",
-    maxWidth: "350px",
-    margin: "0 auto",
+
+  navTitle: {
+    fontSize: "20px",
+    fontWeight: "700",
+    margin: 0,
   },
-  savedTitle: { fontSize: "20px", color: "#333", marginBottom: "15px" },
-  contactCard: {
-    background: "#fff",
-    padding: "12px 20px",
-    borderRadius: "10px",
+
+  logoutBtn: {
+    position: "absolute",
+    right: "15px",
+    background: "#E63946",
+    color: "#fff",
+    padding: "8px 15px",
+    borderRadius: "25px",
+    border: "none",
+    cursor: "pointer",
+    fontWeight: "600",
+  },
+
+  card: {
+    background: "white",
+    width: "90%",
+    maxWidth: "420px",
+    padding: "30px",
+    borderRadius: "25px",
+    textAlign: "center",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+  },
+
+  title: { fontSize: "24px", fontWeight: "700", color: "#4b0082" },
+  desc: { fontSize: "15px", marginBottom: "15px", color: "#555" },
+
+  input: {
+    width: "100%",
+    padding: "12px",
+    fontSize: "17px",
+    borderRadius: "12px",
+    border: "1px solid #aaa",
+    marginBottom: "15px",
+  },
+
+  saveBtn: {
+    width: "100%",
+    background: "#1d3557",
+    color: "white",
+    padding: "12px 0",
+    fontSize: "16px",
+    borderRadius: "25px",
+    border: "none",
+    cursor: "pointer",
+    marginBottom: "12px",
+  },
+
+  mapBtn: {
+    width: "100%",
+    background: "#7C2ED3",
+    color: "white",
+    padding: "12px 0",
+    fontSize: "16px",
+    borderRadius: "25px",
+    border: "none",
+    cursor: "pointer",
+    marginBottom: "15px",
+    boxShadow: "0 6px 20px rgba(124,46,211,0.4)"
+  },
+
+  listContainer: {
+    marginTop: "20px",
+    textAlign: "left"
+  },
+
+  savedTitle: {
+    fontSize: "18px",
     marginBottom: "10px",
+    fontWeight: "600",
+  },
+
+  contactCard: {
+    background: "#f4ebff",
+    padding: "12px",
+    borderRadius: "12px",
+    marginBottom: "8px",
     display: "flex",
     justifyContent: "space-between",
-    boxShadow: "0 3px 15px rgba(0,0,0,0.15)",
   },
+
   deleteBtn: {
-    background: "#e63946",
+    background: "#d90429",
     color: "#fff",
-    padding: "4px 8px",
-    borderRadius: "6px",
-    cursor: "pointer",
     border: "none",
+    padding: "4px 8px",
+    borderRadius: "8px",
+    cursor: "pointer",
   },
 };

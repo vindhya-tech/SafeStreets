@@ -94,7 +94,7 @@ export default function Login() {
 
           <form className="form" onSubmit={handleSubmit}>
             <div className="inputRow">
-              <span className="icon">✉️</span>
+              <span className="icon">✉</span>
               <input
                 type="email"
                 placeholder="Email Address"

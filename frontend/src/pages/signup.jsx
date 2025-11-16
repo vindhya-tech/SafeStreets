@@ -19,7 +19,7 @@ export default function Signup() {
   const [error, setError] = useState("");
 
   const passwordRegex =
-    /^(?=.*[A-Z])(?=.*\d)(?=.*[@#$_])[A-Za-z\d@#$_]{8,}$/;
+    /^(?=.[A-Z])(?=.\d)(?=.*[@#$])[A-Za-z\d@#$]{8,}$/;
 
   const handleChange = (e) => {
     const { name, value, checked, type } = e.target;

@@ -5,42 +5,58 @@ import Dashboard from "../pages/Dashboard";
 import ProtectedRoute from "../components/ProtectedRoute";
 import EmergencyPage from "../pages/EmergencyPage.jsx";
 import SOSPage from "../pages/SOSPage.jsx";
-
-
-
-import SafeRouteMap from "../SafeRouteMap.jsx"; // ✅ Correct import
-// import EmergencyPage from "../pages/EmergencyPage"; // ❌ Comment until created
+import HomePage from "../pages/HomePage";
+import SafeRouteMap from "../SafeRouteMap.jsx";
 
 export default function AppRouter() {
-  const isAuthenticated = () => {
-    const authUser = localStorage.getItem("authUser");
-    return !!authUser;
-  };
-
-  const isLoggedIn = isAuthenticated();
-
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="/signup" element={!isLoggedIn ? <Signup /> : <Navigate to="/dashboard" replace />} />
-      <Route path="/login" element={!isLoggedIn ? <Login /> : <Navigate to="/dashboard" replace />} />
+      {/* Default first page → HomePage */}
+      <Route path="/" element={<HomePage />} />
 
-      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      {/* Public Auth Routes */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
 
-      <Route path="/map" element={<ProtectedRoute><SafeRouteMap /></ProtectedRoute>} />
-
-      <Route path="/emergency" element={<ProtectedRoute><EmergencyPage /></ProtectedRoute>} /> 
+      {/* Protected Routes */}
       <Route
-  path="/sos"
-  element={
-    <ProtectedRoute>
-      <SOSPage />
-    </ProtectedRoute>
-  }
-/>
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
 
+      <Route
+        path="/map"
+        element={
+          <ProtectedRoute>
+            <SafeRouteMap />
+          </ProtectedRoute>
+        }
+      />
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route
+        path="/emergency"
+        element={
+          <ProtectedRoute>
+            <EmergencyPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/sos"
+        element={
+          <ProtectedRoute>
+            <SOSPage />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Unknown Route → Redirect Home */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
