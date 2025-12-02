@@ -17,4 +17,14 @@ docker rm <container_id>
 docker pull yourdockerid/redis1
 docker run -p 6379:6379 --name myredis -d yourdockerid/redis1
 
+//compose
+docker compose up -d
+docker ps
+docker compose down
+docker build -t yourdockerid/redis1 .
+docker compose up -d --build
+
+
+
+
 
